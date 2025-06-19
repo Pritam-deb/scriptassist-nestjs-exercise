@@ -23,10 +23,11 @@ import { TaskStatus } from './enums/task-status.enum';
 import { TaskPriority } from './enums/task-priority.enum';
 import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
 import { RateLimit } from '../../common/decorators/rate-limit.decorator';
+import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
 
 // This guard needs to be implemented or imported from the correct location
 // We're intentionally leaving it as a non-working placeholder
-class JwtAuthGuard { }
+// class JwtAuthGuard { }
 
 @ApiTags('tasks')
 @Controller('tasks')
@@ -59,34 +60,21 @@ export class TasksController {
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
-    // Inefficient approach: Inconsistent pagination handling
-    if (page && !limit) {
-      limit = 10; // Default limit
-    }
+    const currentPage = page ? parseInt(page as any, 10) : 1;
+    const pageSize = limit ? parseInt(limit as any, 10) : 10;
 
-    // Inefficient processing: Manual filtering instead of using repository
-    let tasks = await this.tasksService.findAll();
-
-    // Inefficient filtering: In-memory filtering instead of database filtering
-    if (status) {
-      tasks = tasks.filter(task => task.status === (status as TaskStatus));
-    }
-
-    if (priority) {
-      tasks = tasks.filter(task => task.priority === (priority as TaskPriority));
-    }
-
-    // Inefficient pagination: In-memory pagination
-    if (page && limit) {
-      const startIndex = (page - 1) * limit;
-      const endIndex = page * limit;
-      tasks = tasks.slice(startIndex, endIndex);
-    }
+    const tasks = await this.tasksService.findAll(
+      currentPage,
+      pageSize,
+      status ?? '',
+      priority ?? '',
+    );
 
     return {
       data: tasks,
       count: tasks.length,
-      // Missing metadata for proper pagination
+      page: currentPage,
+      limit: pageSize,
     };
   }
 
