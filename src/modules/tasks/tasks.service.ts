@@ -33,19 +33,18 @@ export class TasksService {
   }
 
   async findAll(
+    userId: string,
     currentPage: number,
     pageSize: number,
     status: string,
     priority: string,
   ): Promise<Task[]> {
-    const filters: Partial<Task> = {};
-    if (status) filters.status = status as any;
-    if (priority) filters.priority = priority as any;
-
+    const whereClause: any = { user: { id: userId } };
+    if (status) whereClause.status = status as any;
+    if (priority) whereClause.priority = priority as any;
     //Pagination handling done efficiently, saving memory and processing time
-
     return this.tasksRepository.find({
-      where: Object.keys(filters).length > 0 ? filters : undefined,
+      where: whereClause,
       relations: ['user'],
       skip: (currentPage - 1) * pageSize,
       take: pageSize,

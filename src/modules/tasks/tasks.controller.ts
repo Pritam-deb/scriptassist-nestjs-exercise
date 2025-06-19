@@ -11,6 +11,7 @@ import {
   HttpException,
   HttpStatus,
   UseInterceptors,
+  Request,
 } from '@nestjs/common';
 import { TasksService } from './tasks.service';
 import { CreateTaskDto } from './dto/create-task.dto';
@@ -55,6 +56,7 @@ export class TasksController {
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   async findAll(
+    @Request() req: Request,
     @Query('status') status?: string,
     @Query('priority') priority?: string,
     @Query('page') page?: number,
@@ -62,8 +64,9 @@ export class TasksController {
   ) {
     const currentPage = page ? parseInt(page as any, 10) : 1;
     const pageSize = limit ? parseInt(limit as any, 10) : 10;
-
+    const userId = (req as any).user.id;
     const tasks = await this.tasksService.findAll(
+      userId,
       currentPage,
       pageSize,
       status ?? '',
