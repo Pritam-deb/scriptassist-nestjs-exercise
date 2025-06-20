@@ -18,18 +18,27 @@ export class TasksService {
   ) { }
 
   async create(createTaskDto: CreateTaskDto): Promise<Task> {
-    // Inefficient implementation: creates the task but doesn't use a single transaction
-    // for creating and adding to queue, potential for inconsistent state
-    const task = this.tasksRepository.create(createTaskDto);
-    const savedTask = await this.tasksRepository.save(task);
+    const queryRunner = this.tasksRepository.manager.connection.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const task = this.tasksRepository.create(createTaskDto);
+      const savedTask = await queryRunner.manager.save(task);
 
-    // Add to queue without waiting for confirmation or handling errors
-    this.taskQueue.add('task-status-update', {
-      taskId: savedTask.id,
-      status: savedTask.status,
-    });
+      await this.taskQueue.add('task-status-update', {
+        taskId: savedTask.id,
+        status: savedTask.status,
+      });
 
-    return savedTask;
+      await queryRunner.commitTransaction();
+      return savedTask;
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      console.error('Failed to enqueue task status update:', err);
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   async findAll(
@@ -51,18 +60,29 @@ export class TasksService {
     });
   }
 
+  async getAllTasks(): Promise<Task[]> {
+    return this.tasksRepository.find();
+  }
+
+  async getTaskStats() {
+    return this.tasksRepository
+      .createQueryBuilder('task')
+      .select([
+        'COUNT(*) as total',
+        `COUNT(*) FILTER (WHERE task.status = 'COMPLETED') as completed`,
+        `COUNT(*) FILTER (WHERE task.status = 'IN_PROGRESS') as inProgress`,
+        `COUNT(*) FILTER (WHERE task.status = 'PENDING') as pending`,
+        `COUNT(*) FILTER (WHERE task.priority = 'HIGH') as highPriority`,
+      ])
+      .getRawOne();
+  }
+
   async findOne(id: string): Promise<Task> {
-    // Inefficient implementation: two separate database calls
-    const count = await this.tasksRepository.count({ where: { id } });
-
-    if (count === 0) {
-      throw new NotFoundException(`Task with ID ${id} not found`);
+    const task = await this.tasksRepository.findOne({ where: { id }, relations: ['user'] });
+    if (!task) {
+      throw new NotFoundException(`Task not found`);
     }
-
-    return (await this.tasksRepository.findOne({
-      where: { id },
-      relations: ['user'],
-    })) as Task;
+    return task;
   }
 
   async update(id: string, updateTaskDto: UpdateTaskDto): Promise<Task> {

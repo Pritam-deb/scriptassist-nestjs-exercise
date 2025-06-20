@@ -12,6 +12,7 @@ import {
   HttpStatus,
   UseInterceptors,
   Request,
+  NotFoundException,
 } from '@nestjs/common';
 import { TasksService } from './tasks.service';
 import { CreateTaskDto } from './dto/create-task.dto';
@@ -36,12 +37,7 @@ import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
 @RateLimit({ limit: 100, windowMs: 60000 })
 @ApiBearerAuth()
 export class TasksController {
-  constructor(
-    private readonly tasksService: TasksService,
-    // Anti-pattern: Controller directly accessing repository
-    @InjectRepository(Task)
-    private taskRepository: Repository<Task>,
-  ) { }
+  constructor(private readonly tasksService: TasksService) { }
 
   @Post()
   @ApiOperation({ summary: 'Create a new task' })
@@ -84,18 +80,8 @@ export class TasksController {
   @Get('stats')
   @ApiOperation({ summary: 'Get task statistics' })
   async getStats() {
-    // Inefficient approach: N+1 query problem
-    const tasks = await this.taskRepository.find();
 
-    // Inefficient computation: Should be done with SQL aggregation
-    const statistics = {
-      total: tasks.length,
-      completed: tasks.filter(t => t.status === TaskStatus.COMPLETED).length,
-      inProgress: tasks.filter(t => t.status === TaskStatus.IN_PROGRESS).length,
-      pending: tasks.filter(t => t.status === TaskStatus.PENDING).length,
-      highPriority: tasks.filter(t => t.priority === TaskPriority.HIGH).length,
-    };
-
+    const statistics = await this.tasksService.getTaskStats();
     return statistics;
   }
 
@@ -105,8 +91,7 @@ export class TasksController {
     const task = await this.tasksService.findOne(id);
 
     if (!task) {
-      // Inefficient error handling: Revealing internal details
-      throw new HttpException(`Task with ID ${id} not found in the database`, HttpStatus.NOT_FOUND);
+      throw new NotFoundException('Task not found');
     }
 
     return task;
@@ -115,16 +100,25 @@ export class TasksController {
   @Patch(':id')
   @ApiOperation({ summary: 'Update a task' })
   update(@Param('id') id: string, @Body() updateTaskDto: UpdateTaskDto) {
-    // No validation if task exists before update
+    const task = this.tasksService.findOne(id);
+    if (!task) {
+      throw new NotFoundException('Task not found');
+    }
     return this.tasksService.update(id, updateTaskDto);
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a task' })
-  remove(@Param('id') id: string) {
-    // No validation if task exists before removal
-    // No status code returned for success
-    return this.tasksService.remove(id);
+  async remove(@Param('id') id: string) {
+    const task = this.tasksService.findOne(id);
+    if (!task) {
+      throw new NotFoundException('Task not found');
+    }
+    await this.tasksService.remove(id);
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Task successfully deleted',
+    };
   }
 
   @Post('batch')
