@@ -27,10 +27,6 @@ import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
 import { RateLimit } from '../../common/decorators/rate-limit.decorator';
 import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
 
-// This guard needs to be implemented or imported from the correct location
-// We're intentionally leaving it as a non-working placeholder
-// class JwtAuthGuard { }
-
 @ApiTags('tasks')
 @Controller('tasks')
 @UseGuards(JwtAuthGuard, RateLimitGuard)
@@ -124,37 +120,31 @@ export class TasksController {
   @Post('batch')
   @ApiOperation({ summary: 'Batch process multiple tasks' })
   async batchProcess(@Body() operations: { tasks: string[]; action: string }) {
-    // Inefficient batch processing: Sequential processing instead of bulk operations
     const { tasks: taskIds, action } = operations;
-    const results = [];
 
-    // N+1 query problem: Processing tasks one by one
-    for (const taskId of taskIds) {
-      try {
-        let result;
-
-        switch (action) {
-          case 'complete':
-            result = await this.tasksService.update(taskId, { status: TaskStatus.COMPLETED });
-            break;
-          case 'delete':
-            result = await this.tasksService.remove(taskId);
-            break;
-          default:
-            throw new HttpException(`Unknown action: ${action}`, HttpStatus.BAD_REQUEST);
-        }
-
-        results.push({ taskId, success: true, result });
-      } catch (error) {
-        // Inconsistent error handling
-        results.push({
-          taskId,
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        });
+    try {
+      let result;
+      switch (action) {
+        case 'complete':
+          result = await this.tasksService.bulkUpdateStatus(taskIds, TaskStatus.COMPLETED);
+          break;
+        case 'delete':
+          result = await this.tasksService.bulkDelete(taskIds);
+          break;
+        default:
+          throw new HttpException(`Unknown action: ${action}`, HttpStatus.BAD_REQUEST);
       }
-    }
 
-    return results;
+      return {
+        success: true,
+        affected: Array.isArray(result) ? result.length : 0,
+        taskIds,
+      };
+    } catch (error) {
+      throw new HttpException(
+        error instanceof Error ? error.message : 'Unknown error',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 }
