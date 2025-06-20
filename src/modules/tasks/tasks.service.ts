@@ -46,8 +46,6 @@ export class TasksService {
     userId: string,
     currentPage: number,
     pageSize: number,
-    status: string,
-    priority: string,
     filter: TaskFilterDto,
   ): Promise<Task[]> {
     const whereClause: any = { user: { id: userId } };

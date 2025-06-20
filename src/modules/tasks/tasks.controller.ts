@@ -26,6 +26,7 @@ import { TaskPriority } from './enums/task-priority.enum';
 import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
 import { RateLimit } from '../../common/decorators/rate-limit.decorator';
 import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
+import { TaskFilterDto } from './dto/task-filter.dto';
 
 @ApiTags('tasks')
 @Controller('tasks')
@@ -57,13 +58,12 @@ export class TasksController {
     const currentPage = page ? parseInt(page as any, 10) : 1;
     const pageSize = limit ? parseInt(limit as any, 10) : 10;
     const userId = (req as any).user.id;
-    const tasks = await this.tasksService.findAll(
-      userId,
-      currentPage,
-      pageSize,
-      status ?? '',
-      priority ?? '',
-    );
+    const filter: TaskFilterDto = {
+      status: status as TaskStatus,
+      priority: priority as TaskPriority,
+    };
+
+    const tasks = await this.tasksService.findAll(userId, currentPage, pageSize, filter);
 
     return {
       data: tasks,
