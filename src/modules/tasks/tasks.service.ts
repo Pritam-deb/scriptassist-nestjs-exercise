@@ -4,6 +4,7 @@ import { Repository, In } from 'typeorm';
 import { Task } from './entities/task.entity';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
+import { TaskFilterDto } from './dto/task-filter.dto';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { TaskStatus } from './enums/task-status.enum';
@@ -47,17 +48,49 @@ export class TasksService {
     pageSize: number,
     status: string,
     priority: string,
+    filter: TaskFilterDto,
   ): Promise<Task[]> {
     const whereClause: any = { user: { id: userId } };
-    if (status) whereClause.status = status as any;
-    if (priority) whereClause.priority = priority as any;
-    //Pagination handling done efficiently, saving memory and processing time
-    return this.tasksRepository.find({
-      where: whereClause,
-      relations: ['user'],
-      skip: (currentPage - 1) * pageSize,
-      take: pageSize,
-    });
+
+    if (filter.status) whereClause.status = filter.status;
+    if (filter.priority) whereClause.priority = filter.priority;
+
+    if (filter.fromDate || filter.toDate) {
+      whereClause.createdAt = {};
+      if (filter.fromDate) whereClause.createdAt['$gte'] = new Date(filter.fromDate);
+      if (filter.toDate) whereClause.createdAt['$lte'] = new Date(filter.toDate);
+    }
+
+    const query = this.tasksRepository
+      .createQueryBuilder('task')
+      .leftJoinAndSelect('task.user', 'user')
+      .where('task.userId = :userId', { userId })
+      .skip((currentPage - 1) * pageSize)
+      .take(pageSize);
+
+    if (filter.status) {
+      query.andWhere('task.status = :status', { status: filter.status });
+    }
+
+    if (filter.priority) {
+      query.andWhere('task.priority = :priority', { priority: filter.priority });
+    }
+
+    if (filter.fromDate) {
+      query.andWhere('task.createdAt >= :fromDate', { fromDate: filter.fromDate });
+    }
+
+    if (filter.toDate) {
+      query.andWhere('task.createdAt <= :toDate', { toDate: filter.toDate });
+    }
+
+    if (filter.search) {
+      query.andWhere('(task.title ILIKE :search OR task.description ILIKE :search)', {
+        search: `%${filter.search}%`,
+      });
+    }
+
+    return query.getMany();
   }
 
   async getAllTasks(): Promise<Task[]> {
